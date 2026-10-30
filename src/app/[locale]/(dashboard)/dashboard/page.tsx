@@ -4,17 +4,17 @@ import { KpiCard } from "@/components/kpi-card";
 import { AnalyticsGauge } from "@/components/analytics-gauge";
 import { UrgentTasks } from "@/components/urgent-tasks";
 import { getTranslations } from "next-intl/server";
-import {
-  ListTodo,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-  Sparkles,
-} from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export default async function DashboardPage() {
   const t = await getTranslations("dashboard");
   const data = await getDashboardData();
+
+  // Ensure dates are serializable strings
+  const serializedUrgentTasks = data.urgentTasks.map((task: any) => ({
+    ...task,
+    deadline: typeof task.deadline === "string" ? task.deadline : task.deadline.toISOString(),
+  }));
 
   return (
     <div className="space-y-8">
@@ -40,25 +40,25 @@ export default async function DashboardPage() {
         <KpiCard
           title={t("totalTasks")}
           value={data.total}
-          icon={ListTodo}
+          iconName="total"
           colorVariant="indigo"
         />
         <KpiCard
           title={t("completedTasks")}
           value={data.completed}
-          icon={CheckCircle2}
+          iconName="completed"
           colorVariant="emerald"
         />
         <KpiCard
           title={t("pendingTasks")}
           value={data.pending}
-          icon={Clock}
+          iconName="pending"
           colorVariant="amber"
         />
         <KpiCard
           title={t("completionRate")}
           value={`${data.completionRate}%`}
-          icon={TrendingUp}
+          iconName="rate"
           trend={data.completionRate >= 50 ? "+5% bu hafta" : "Past"}
           trendUp={data.completionRate >= 50}
           colorVariant="violet"
@@ -80,7 +80,7 @@ export default async function DashboardPage() {
 
         {/* Right Column: Urgent Tasks */}
         <div className="lg:col-span-2">
-          <UrgentTasks tasks={data.urgentTasks as any} />
+          <UrgentTasks tasks={serializedUrgentTasks as any} />
         </div>
       </div>
     </div>

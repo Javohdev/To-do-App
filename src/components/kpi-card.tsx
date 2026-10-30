@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { LucideIcon } from "lucide-react";
+import { ListTodo, CheckCircle2, Clock, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface KpiCardProps {
   title: string;
   value: string | number;
   description?: string;
-  icon: LucideIcon;
+  iconName?: "total" | "completed" | "pending" | "rate";
   trend?: string;
   trendUp?: boolean;
   colorVariant?: "indigo" | "emerald" | "amber" | "violet";
@@ -46,12 +46,26 @@ export function KpiCard({
   title,
   value,
   description,
-  icon: Icon,
+  iconName = "total",
   trend,
   trendUp,
   colorVariant = "indigo",
 }: KpiCardProps) {
   const colors = colorMap[colorVariant];
+
+  const renderIcon = () => {
+    switch (iconName) {
+      case "completed":
+        return <CheckCircle2 className="w-5 h-5" />;
+      case "pending":
+        return <Clock className="w-5 h-5" />;
+      case "rate":
+        return <TrendingUp className="w-5 h-5" />;
+      case "total":
+      default:
+        return <ListTodo className="w-5 h-5" />;
+    }
+  };
 
   return (
     <motion.div
@@ -96,7 +110,7 @@ export function KpiCard({
             colors.border
           )}
         >
-          <Icon className="w-5 h-5" />
+          {renderIcon()}
         </div>
       </div>
     </motion.div>

@@ -5,7 +5,14 @@ import { getTranslations } from "next-intl/server";
 
 export default async function TasksPage() {
   const t = await getTranslations("tasks");
-  const tasks = await getTasks();
+  const rawTasks = await getTasks();
+
+  const serializedTasks = rawTasks.map((task: any) => ({
+    ...task,
+    deadline: typeof task.deadline === "string" ? task.deadline : task.deadline.toISOString(),
+    createdAt: typeof task.createdAt === "string" ? task.createdAt : task.createdAt?.toISOString?.() || new Date().toISOString(),
+    completedAt: task.completedAt ? (typeof task.completedAt === "string" ? task.completedAt : task.completedAt.toISOString()) : null,
+  }));
 
   return (
     <div className="space-y-6">
@@ -20,7 +27,7 @@ export default async function TasksPage() {
       </div>
 
       {/* Task List Component with Search, Filter & Modals */}
-      <TaskList initialTasks={tasks as any} />
+      <TaskList initialTasks={serializedTasks as any} />
     </div>
   );
 }

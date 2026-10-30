@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sparkles, ArrowRight } from "lucide-react";
+import { Sparkles, ArrowRight, Play } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 
@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [demoLoading, setDemoLoading] = React.useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +44,30 @@ export default function LoginPage() {
     } catch (err) {
       setError(t("invalidCredentials"));
       setLoading(false);
+    }
+  };
+
+  const handleDemoSignIn = async () => {
+    setDemoLoading(true);
+    setEmail("demo@focusflow.uz");
+    setPassword("demo12345");
+    try {
+      const res = await signIn("credentials", {
+        email: "demo@focusflow.uz",
+        password: "demo12345",
+        redirect: false,
+      });
+
+      if (!res?.error) {
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        setError("Demo tizimiga ulanib bo'lmadi");
+        setDemoLoading(false);
+      }
+    } catch {
+      setError("Demo tizimiga ulanib bo'lmadi");
+      setDemoLoading(false);
     }
   };
 
@@ -78,6 +103,24 @@ export default function LoginPage() {
               {error}
             </div>
           )}
+
+          {/* Quick Demo Access banner */}
+          <div className="p-3.5 rounded-xl bg-primary/10 border border-primary/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-left">
+              <p className="text-xs font-bold text-primary">Localhost Sinov Rejimi</p>
+              <p className="text-[11px] text-muted-foreground">Bir bosishda ilovani to'liq ko'rish</p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleDemoSignIn}
+              disabled={demoLoading}
+              className="w-full sm:w-auto h-8 text-xs font-semibold gap-1.5 shrink-0"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>{demoLoading ? "Kirilmoqda..." : "Demo Kirish"}</span>
+            </Button>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
