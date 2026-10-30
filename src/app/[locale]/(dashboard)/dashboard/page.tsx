@@ -1,23 +1,16 @@
+"use client";
+
 import * as React from "react";
-import { getDashboardData } from "@/actions/tasks";
+import { useTasks } from "@/context/task-context";
 import { KpiCard } from "@/components/kpi-card";
 import { AnalyticsGauge } from "@/components/analytics-gauge";
 import { UrgentTasks } from "@/components/urgent-tasks";
-import { getTranslations } from "next-intl/server";
+import { useTranslations } from "next-intl";
 import { Sparkles } from "lucide-react";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-export default async function DashboardPage() {
-  const t = await getTranslations("dashboard");
-  const data = await getDashboardData();
-
-  // Ensure dates are serializable strings
-  const serializedUrgentTasks = data.urgentTasks.map((task: any) => ({
-    ...task,
-    deadline: typeof task.deadline === "string" ? task.deadline : task.deadline.toISOString(),
-  }));
+export default function DashboardPage() {
+  const t = useTranslations("dashboard");
+  const { stats } = useTasks();
 
   return (
     <div className="space-y-6 sm:space-y-8 w-full max-w-full overflow-x-hidden">
@@ -42,28 +35,28 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         <KpiCard
           title={t("totalTasks")}
-          value={data.total}
+          value={stats.total}
           iconName="total"
           colorVariant="indigo"
         />
         <KpiCard
           title={t("completedTasks")}
-          value={data.completed}
+          value={stats.completed}
           iconName="completed"
           colorVariant="emerald"
         />
         <KpiCard
           title={t("pendingTasks")}
-          value={data.pending}
+          value={stats.pending}
           iconName="pending"
           colorVariant="amber"
         />
         <KpiCard
           title={t("completionRate")}
-          value={`${data.completionRate}%`}
+          value={`${stats.completionRate}%`}
           iconName="rate"
-          trend={data.completionRate >= 50 ? "+5%" : undefined}
-          trendUp={data.completionRate >= 50}
+          trend={stats.completionRate >= 50 ? "+5%" : undefined}
+          trendUp={stats.completionRate >= 50}
           colorVariant="violet"
         />
       </div>
@@ -73,9 +66,9 @@ export default async function DashboardPage() {
         {/* Left Column: Visual Progress Gauge */}
         <div className="lg:col-span-1">
           <AnalyticsGauge
-            percentage={data.completionRate}
-            completed={data.completed}
-            total={data.total}
+            percentage={stats.completionRate}
+            completed={stats.completed}
+            total={stats.total}
             title={t("completionRate")}
             subtitle={t("productivityScore")}
           />
@@ -83,7 +76,7 @@ export default async function DashboardPage() {
 
         {/* Right Column: Urgent Tasks */}
         <div className="lg:col-span-2">
-          <UrgentTasks tasks={serializedUrgentTasks as any} />
+          <UrgentTasks tasks={stats.urgentTasks as any} />
         </div>
       </div>
     </div>

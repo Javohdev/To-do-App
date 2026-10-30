@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { TaskCard, TaskItem } from "./task-card";
+import { TaskCard } from "./task-card";
 import { TaskDialog } from "./task-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,27 +14,22 @@ import {
 } from "@/components/ui/select";
 import { Plus, Search, Filter, ListTodo } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/i18n/routing";
+import { useTasks, ClientTask } from "@/context/task-context";
 
 interface TaskListProps {
-  initialTasks: TaskItem[];
+  initialTasks: ClientTask[];
 }
 
-export function TaskList({ initialTasks }: TaskListProps) {
+export function TaskList({ initialTasks: _ }: TaskListProps) {
   const t = useTranslations("tasks");
-  const router = useRouter();
+  const { tasks } = useTasks();
 
-  const [tasks, setTasks] = React.useState<TaskItem[]>(initialTasks);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [priorityFilter, setPriorityFilter] = React.useState<string>("ALL");
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingTask, setEditingTask] = React.useState<TaskItem | null>(null);
-
-  React.useEffect(() => {
-    setTasks(initialTasks);
-  }, [initialTasks]);
+  const [editingTask, setEditingTask] = React.useState<ClientTask | null>(null);
 
   const filteredTasks = React.useMemo(() => {
     return tasks.filter((task) => {
@@ -60,7 +55,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
     });
   }, [tasks, search, statusFilter, priorityFilter]);
 
-  const handleEdit = (task: TaskItem) => {
+  const handleEdit = (task: ClientTask) => {
     setEditingTask(task);
     setDialogOpen(true);
   };
@@ -70,38 +65,9 @@ export function TaskList({ initialTasks }: TaskListProps) {
     setDialogOpen(true);
   };
 
-  const handleStatusChange = (id: string, newStatus: string) => {
-    // Instant optimistic update
-    setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, status: newStatus as any } : t))
-    );
-    router.refresh();
-  };
-
-  const handleDelete = (id: string) => {
-    // Instant optimistic update
-    setTasks((prev) => prev.filter((t) => t.id !== id));
-    router.refresh();
-  };
-
-  const handleTaskSaved = (savedTask?: any) => {
-    if (savedTask) {
-      setTasks((prev) => {
-        const index = prev.findIndex((t) => t.id === savedTask.id);
-        if (index !== -1) {
-          const next = [...prev];
-          next[index] = savedTask;
-          return next;
-        }
-        return [savedTask, ...prev];
-      });
-    }
-    router.refresh();
-  };
-
   return (
-    <div className="space-y-5 w-full max-w-full">
-      {/* Top action bar: Search & Filters & Add button - fully responsive on phone */}
+    <div className="space-y-4 sm:space-y-5 w-full max-w-full">
+      {/* Top action bar: Search & Filters & Add button */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
         {/* Search input */}
         <div className="relative flex-1 w-full sm:max-w-xs md:max-w-md">
@@ -189,8 +155,6 @@ export function TaskList({ initialTasks }: TaskListProps) {
               key={task.id}
               task={task}
               onEdit={handleEdit}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
             />
           ))
         )}
@@ -201,7 +165,6 @@ export function TaskList({ initialTasks }: TaskListProps) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         taskToEdit={editingTask}
-        onSuccess={handleTaskSaved}
       />
     </div>
   );

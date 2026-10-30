@@ -7,25 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatRemainingTime } from "@/lib/utils";
 import { Calendar, Clock, Edit2, Trash2 } from "lucide-react";
-import { toggleTaskStatus, deleteTask } from "@/actions/tasks";
 import { useTranslations } from "next-intl";
-import { motion, AnimatePresence } from "framer-motion";
-
-export interface TaskItem {
-  id: string;
-  title: string;
-  description: string | null;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
-  priority: "LOW" | "MEDIUM" | "HIGH";
-  deadline: Date | string;
-  createdAt: Date | string;
-}
+import { motion } from "framer-motion";
+import { useTasks, ClientTask } from "@/context/task-context";
+import { toggleTaskStatus, deleteTask as serverDeleteTask } from "@/actions/tasks";
 
 interface TaskCardProps {
-  task: TaskItem;
-  onEdit?: (task: TaskItem) => void;
-  onStatusChange?: (id: string, newStatus: string) => void;
-  onDelete?: (id: string) => void;
+  task: ClientTask;
+  onEdit?: (task: ClientTask) => void;
 }
 
 const priorityBadges = {
@@ -34,28 +23,15 @@ const priorityBadges = {
   HIGH: { labelKey: "high", variant: "destructive" as const },
 };
 
-export function TaskCard({
-  task,
-  onEdit,
-  onStatusChange,
-  onDelete,
-}: TaskCardProps) {
+export function TaskCard({ task, onEdit }: TaskCardProps) {
   const t = useTranslations("tasks");
   const tDash = useTranslations("dashboard");
-  const [isCompleted, setIsCompleted] = React.useState(
-    task.status === "COMPLETED"
-  );
-  const [isUpdating, setIsUpdating] = React.useState(false);
+  const { toggleTask, deleteTask } = useTasks();
 
-  React.useEffect(() => {
-    setIsCompleted(task.status === "COMPLETED");
-  }, [task.status]);
+  const isCompleted = task.status === "COMPLETED";
 
-  const handleToggle = async () => {
-    if (isUpdating) return;
+  const handleToggle = () => {
     const nextState = !isCompleted;
-    setIsCompleted(nextState);
-
     if (nextState) {
       try {
         confetti({
@@ -64,33 +40,20 @@ export function TaskCard({
           origin: { y: 0.8 },
           colors: ["#6366f1", "#10b981", "#f59e0b", "#ec4899"],
         });
-      } catch (e) {
-        // Confetti fallback
-      }
+      } catch (e) {}
     }
 
-    setIsUpdating(true);
-    try {
-      const res = await toggleTaskStatus(task.id);
-      if (res.success && onStatusChange) {
-        onStatusChange(task.id, nextState ? "COMPLETED" : "PENDING");
-      }
-    } catch (err) {
-      // Revert if error
-      setIsCompleted(!nextState);
-    } finally {
-      setIsUpdating(false);
-    }
+    // Instant zero-delay local state update
+    toggleTask(task.id);
+
+    // Sync in background with server
+    toggleTaskStatus(task.id, nextState ? "COMPLETED" : "PENDING").catch(() => {});
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (confirm(t("deleteConfirmTitle"))) {
-      try {
-        await deleteTask(task.id);
-        if (onDelete) onDelete(task.id);
-      } catch (err) {
-        console.error(err);
-      }
+      deleteTask(task.id);
+      serverDeleteTask(task.id).catch(() => {});
     }
   };
 
@@ -106,11 +69,11 @@ export function TaskCard({
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.2 }}
-      className={`group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border transition-all duration-200 ${
+      transition={{ duration: 0.15 }}
+      className={`group relative flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 rounded-xl border transition-all duration-200 ${
         isCompleted
           ? "bg-muted/30 border-border/40 opacity-75"
           : isOverdue
@@ -119,7 +82,7 @@ export function TaskCard({
       }`}
     >
       {/* Left side: Checkbox + Title + Description + Meta */}
-      <div className="flex items-start gap-3.5 flex-1 min-w-0 pr-4">
+      <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
         <div className="pt-0.5">
           <Checkbox
             checked={isCompleted}
@@ -132,7 +95,7 @@ export function TaskCard({
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h4
-              className={`font-semibold text-sm sm:text-base leading-snug transition-all ${
+              className={`font-semibold text-xs sm:text-sm md:text-base leading-snug transition-all ${
                 isCompleted
                   ? "line-through text-muted-foreground"
                   : "text-foreground"
@@ -141,12 +104,12 @@ export function TaskCard({
               {task.title}
             </h4>
 
-            <Badge variant={priorityConfig.variant} className="text-[11px] py-0 px-2 font-medium">
+            <Badge variant={priorityConfig.variant} className="text-[10px] sm:text-[11px] py-0 px-2 font-medium">
               {t(priorityConfig.labelKey)}
             </Badge>
 
             {isCompleted && (
-              <Badge variant="success" className="text-[11px] py-0 px-2">
+              <Badge variant="success" className="text-[10px] sm:text-[11px] py-0 px-2">
                 {t("completed")}
               </Badge>
             )}
@@ -162,7 +125,7 @@ export function TaskCard({
             </p>
           )}
 
-          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 flex-wrap">
+          <div className="flex items-center gap-3 sm:gap-4 text-[11px] sm:text-xs text-muted-foreground pt-1 flex-wrap">
             <div className="flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
               <span>
@@ -191,7 +154,7 @@ export function TaskCard({
       </div>
 
       {/* Right side: Actions */}
-      <div className="flex items-center gap-1 mt-3 sm:mt-0 self-end sm:self-center shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 w-full sm:w-auto justify-end">
+      <div className="flex items-center gap-1 mt-2 sm:mt-0 self-end sm:self-center shrink-0 border-t sm:border-t-0 pt-1.5 sm:pt-0 w-full sm:w-auto justify-end">
         {onEdit && (
           <Button
             variant="ghost"

@@ -22,9 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createTask, updateTask } from "@/actions/tasks";
+import { createTask as serverCreateTask, updateTask as serverUpdateTask } from "@/actions/tasks";
 import { useTranslations } from "next-intl";
-import { TaskItem } from "./task-card";
+import { useTasks, ClientTask } from "@/context/task-context";
 
 const formSchema = z.object({
   title: z.string().min(1, "Title is required").max(200),
@@ -39,18 +39,17 @@ type FormValues = z.infer<typeof formSchema>;
 interface TaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  taskToEdit?: TaskItem | null;
-  onSuccess?: (task?: any) => void;
+  taskToEdit?: ClientTask | null;
 }
 
 export function TaskDialog({
   open,
   onOpenChange,
   taskToEdit,
-  onSuccess,
 }: TaskDialogProps) {
   const t = useTranslations("tasks");
   const tCommon = useTranslations("common");
+  const { createTask, updateTask } = useTasks();
   const [loading, setLoading] = React.useState(false);
 
   const defaultDeadline = React.useMemo(() => {
@@ -108,17 +107,21 @@ export function TaskDialog({
   const onSubmit = async (data: FormValues) => {
     setLoading(true);
     try {
-      let resultTask: any = null;
       if (taskToEdit) {
-        const res = await updateTask(taskToEdit.id, data);
-        if (res.success) resultTask = res.task;
+        // 1. Instant local update (0 ms lag!)
+        updateTask(taskToEdit.id, data);
+        onOpenChange(false);
+        reset();
+        // 2. Sync to server in background
+        serverUpdateTask(taskToEdit.id, data).catch(() => {});
       } else {
-        const res = await createTask(data);
-        if (res.success) resultTask = res.task;
+        // 1. Instant local creation (0 ms lag!)
+        createTask(data);
+        onOpenChange(false);
+        reset();
+        // 2. Sync to server in background
+        serverCreateTask(data).catch(() => {});
       }
-      onOpenChange(false);
-      reset();
-      if (onSuccess) onSuccess(resultTask);
     } catch (err) {
       console.error(err);
     } finally {
