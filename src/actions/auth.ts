@@ -3,7 +3,7 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { mockUsers, addStarterTasksForUser } from "@/lib/demo-store";
+import { mockUsers } from "@/lib/demo-store";
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(60),
@@ -78,7 +78,7 @@ export async function registerUser(input: RegisterInput) {
       }
     }
 
-    // Local instant testing mode (no DB setup required!)
+    // Local in-memory testing store (zero fake starter tasks, clean state)
     const newUserId = `user-${Date.now()}`;
     const newUser = {
       id: newUserId,
@@ -88,7 +88,6 @@ export async function registerUser(input: RegisterInput) {
       createdAt: new Date(),
     };
     mockUsers.push(newUser);
-    addStarterTasksForUser(newUserId, name);
 
     return {
       success: true,

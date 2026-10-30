@@ -3,6 +3,7 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import { CheckCircle2, Clock, Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface AnalyticsGaugeProps {
   percentage: number;
@@ -16,14 +17,20 @@ export function AnalyticsGauge({
   percentage,
   completed,
   total,
-  title = "Bajarilish Ko'rsatkichi",
-  subtitle = "Umumiy progress",
+  title,
+  subtitle,
 }: AnalyticsGaugeProps) {
+  const tDash = useTranslations("dashboard");
+  const tCommon = useTranslations("common");
+
   const safePercentage = Math.min(100, Math.max(0, percentage || 0));
   const radius = 70;
   const strokeWidth = 14;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (safePercentage / 100) * circumference;
+
+  const displayTitle = title || tDash("completionRate");
+  const displaySubtitle = subtitle || tDash("productivityScore");
 
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-card/60 backdrop-blur-md rounded-2xl border border-border/60 shadow-sm relative overflow-hidden">
@@ -33,12 +40,20 @@ export function AnalyticsGauge({
 
       <div className="w-full flex items-center justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-foreground text-sm tracking-tight">{title}</h3>
-          <p className="text-xs text-muted-foreground">{subtitle}</p>
+          <h3 className="font-semibold text-foreground text-sm tracking-tight">{displayTitle}</h3>
+          <p className="text-xs text-muted-foreground">{displaySubtitle}</p>
         </div>
         <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
           <Sparkles className="w-3 h-3" />
-          <span>{safePercentage >= 80 ? "Zo'r natija!" : safePercentage >= 50 ? "Yaxshi temp" : "Harakatdamiz"}</span>
+          <span>
+            {total === 0
+              ? tDash("allCaughtUp")
+              : safePercentage >= 80
+              ? "Zo'r natija"
+              : safePercentage >= 50
+              ? "Yaxshi temp"
+              : "Harakatdamiz"}
+          </span>
         </div>
       </div>
 
@@ -92,7 +107,7 @@ export function AnalyticsGauge({
             {safePercentage}%
           </motion.span>
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mt-0.5">
-            {completed} / {total} topshiriq
+            {completed} / {total}
           </span>
         </div>
       </div>
@@ -102,7 +117,7 @@ export function AnalyticsGauge({
         <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <div className="text-left">
-            <p className="text-[10px] uppercase font-bold tracking-wider">Bajarildi</p>
+            <p className="text-[10px] uppercase font-bold tracking-wider">{tDash("completedTasks")}</p>
             <p className="text-sm font-semibold">{completed}</p>
           </div>
         </div>
@@ -110,8 +125,8 @@ export function AnalyticsGauge({
         <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400">
           <Clock className="w-4 h-4 shrink-0" />
           <div className="text-left">
-            <p className="text-[10px] uppercase font-bold tracking-wider">Kutilmoqda</p>
-            <p className="text-sm font-semibold">{total - completed}</p>
+            <p className="text-[10px] uppercase font-bold tracking-wider">{tDash("pendingTasks")}</p>
+            <p className="text-sm font-semibold">{Math.max(0, total - completed)}</p>
           </div>
         </div>
       </div>

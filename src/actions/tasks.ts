@@ -46,7 +46,7 @@ export async function getTasks(filters?: {
   const userId = await getAuthUserId();
   if (!userId) return [];
 
-  // Try Prisma first
+  // Try Prisma first if DB is configured
   try {
     const where: any = { userId };
     if (filters?.status && filters.status !== "ALL") {
@@ -69,22 +69,15 @@ export async function getTasks(filters?: {
         { createdAt: "desc" },
       ],
     });
-    if (dbTasks && dbTasks.length > 0) {
+    if (dbTasks) {
       return dbTasks;
     }
   } catch (error) {
     // Database offline, use mock store
   }
 
-  // Get user's tasks from mock store
-  let list = mockTasks.filter(
-    (t) => t.userId === userId || (userId.startsWith("user-") && t.userId === userId) || (userId === "demo-user-id" && t.userId === "demo-user-id")
-  );
-
-  // If new user has no tasks yet, give them their tasks or default
-  if (list.length === 0) {
-    list = mockTasks.filter((t) => t.userId === userId);
-  }
+  // Get ONLY this specific user's tasks from store (no fake tasks!)
+  let list = mockTasks.filter((t) => t.userId === userId);
 
   if (filters?.status && filters.status !== "ALL") {
     list = list.filter((t) => t.status === filters.status);
@@ -126,10 +119,8 @@ export async function getDashboardData() {
   }
 
   if (tasks.length === 0) {
+    // Real user tasks from memory store (only for this user)
     tasks = mockTasks.filter((t) => t.userId === userId);
-    if (tasks.length === 0 && (userId === "demo-user-id" || userId.startsWith("user-"))) {
-      tasks = mockTasks.filter((t) => t.userId === userId || t.userId === "demo-user-id");
-    }
   }
 
   const total = tasks.length;
@@ -298,7 +289,6 @@ export async function deleteTask(id: string) {
     // Check mock store
   }
 
-  const initialLen = mockTasks.length;
   const filtered = mockTasks.filter((t) => t.id !== id);
   mockTasks.length = 0;
   mockTasks.push(...filtered);

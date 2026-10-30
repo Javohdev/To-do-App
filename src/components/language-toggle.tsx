@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Globe } from "lucide-react";
-import { updateUserPreference } from "@/actions/user";
 
 const languages = [
   { code: "uz", name: "O'zbekcha", flag: "🇺🇿" },
@@ -26,12 +25,13 @@ export function LanguageToggle() {
   const [isPending, startTransition] = useTransition();
 
   const handleLanguageChange = (nextLocale: string) => {
+    // Set cookie for next-intl so server immediately recognizes language preference
+    document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`;
+
     startTransition(() => {
+      // Replaces current route with new locale prefix seamlessly
       router.replace(pathname, { locale: nextLocale });
-    });
-    // Persist preference in the background
-    updateUserPreference({ language: nextLocale }).catch(() => {
-      // Ignore if guest
+      router.refresh();
     });
   };
 
