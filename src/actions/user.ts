@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { mockUsers } from "@/lib/demo-store";
+import { findUserByEmail, findUserById } from "@/lib/demo-store";
 
 export async function getCurrentUser() {
   const session = await auth();
@@ -11,24 +11,40 @@ export async function getCurrentUser() {
   const sessionEmail = session.user.email?.toLowerCase().trim();
   const sessionId = session.user.id;
 
-  // Check mock store first
-  const mockFound = mockUsers.find(
-    (u) => u.id === sessionId || (sessionEmail && u.email === sessionEmail)
-  );
-
-  if (mockFound) {
-    return {
-      id: mockFound.id,
-      name: mockFound.name,
-      email: mockFound.email,
-      image: mockFound.image || null,
-      preferences: {
-        theme: "system",
-        language: "uz",
-      },
-    };
+  // 1. Check persistent store
+  if (sessionId) {
+    const byId = findUserById(sessionId);
+    if (byId) {
+      return {
+        id: byId.id,
+        name: byId.name,
+        email: byId.email,
+        image: byId.image || null,
+        preferences: {
+          theme: "system",
+          language: "uz",
+        },
+      };
+    }
   }
 
+  if (sessionEmail) {
+    const byEmail = findUserByEmail(sessionEmail);
+    if (byEmail) {
+      return {
+        id: byEmail.id,
+        name: byEmail.name,
+        email: byEmail.email,
+        image: byEmail.image || null,
+        preferences: {
+          theme: "system",
+          language: "uz",
+        },
+      };
+    }
+  }
+
+  // 2. Check Prisma DB
   try {
     const user = await prisma.user.findFirst({
       where: {
@@ -45,9 +61,9 @@ export async function getCurrentUser() {
     return user;
   } catch (err) {
     return {
-      id: sessionId || "demo-user-id",
-      name: session.user.name || "Foydalanuvchi",
-      email: session.user.email || "",
+      id: sessionId || `user-${sessionEmail || "guest"}`,
+      name: session.user.name || (sessionEmail ? sessionEmail.split("@")[0] : "Foydalanuvchi"),
+      email: sessionEmail || "",
       image: session.user.image || null,
       preferences: null,
     };

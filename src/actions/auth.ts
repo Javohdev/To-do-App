@@ -3,7 +3,7 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { mockUsers } from "@/lib/demo-store";
+import { findUserByEmail, saveUser } from "@/lib/demo-store";
 
 const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(60),
@@ -26,9 +26,9 @@ export async function registerUser(input: RegisterInput) {
     const { name, email, password } = validated.data;
     const cleanEmail = email.toLowerCase().trim();
 
-    // Check in mock store first
-    const existingInMock = mockUsers.find((u) => u.email === cleanEmail);
-    if (existingInMock) {
+    // Check in persistent store first
+    const existingInStore = findUserByEmail(cleanEmail);
+    if (existingInStore) {
       return {
         success: false,
         error: "This email is already registered",
@@ -69,25 +69,34 @@ export async function registerUser(input: RegisterInput) {
           },
         });
 
+        // Also save locally for persistent backup
+        saveUser({
+          id: user.id,
+          name,
+          email: cleanEmail,
+          passwordHash: hashedPassword,
+          createdAt: new Date().toISOString(),
+        });
+
         return {
           success: true,
           userId: user.id,
         };
       } catch (err) {
-        console.warn("External DB connection failed, falling back to local store:", err);
+        console.warn("External DB connection failed, falling back to persistent store:", err);
       }
     }
 
-    // Local in-memory testing store (zero fake starter tasks, clean state)
+    // Persistent storage (persists across restarts and logins!)
     const newUserId = `user-${Date.now()}`;
     const newUser = {
       id: newUserId,
       name,
       email: cleanEmail,
       passwordHash: hashedPassword,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     };
-    mockUsers.push(newUser);
+    saveUser(newUser);
 
     return {
       success: true,

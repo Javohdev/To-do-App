@@ -5,7 +5,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "./auth.config";
-import { mockUsers } from "@/lib/demo-store";
+import { findUserByEmail, saveUser } from "@/lib/demo-store";
 
 const hasExternalDb =
   process.env.DATABASE_URL &&
@@ -40,79 +40,69 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = String(credentials.email).toLowerCase().trim();
         const password = String(credentials.password);
 
-        // 1. Direct Demo Quick Access
-        if (
-          (email === "demo@focusflow.uz" && password === "demo12345") ||
-          (email === "demo" && password === "demo")
-        ) {
-          return {
-            id: "demo-user-id",
-            name: "Ali Valiyev (Demo)",
-            email: "demo@focusflow.uz",
-            image: null,
-          };
-        }
-
-        // 2. Check local mock store (immediate, no DB timeout!)
-        const mockFound = mockUsers.find((u) => u.email === email);
-        if (mockFound) {
-          if (!mockFound.passwordHash) {
+        // 1. Check local persistent store first (ultra-fast, works on mobile & restarts)
+        const localFound = findUserByEmail(email);
+        if (localFound) {
+          if (!localFound.passwordHash) {
             return {
-              id: mockFound.id,
-              name: mockFound.name,
-              email: mockFound.email,
-              image: mockFound.image || null,
+              id: localFound.id,
+              name: localFound.name,
+              email: localFound.email,
+              image: localFound.image || null,
             };
           }
 
-          const isMatch = await bcrypt.compare(password, mockFound.passwordHash);
+          const isMatch = await bcrypt.compare(password, localFound.passwordHash);
           if (isMatch) {
             return {
-              id: mockFound.id,
-              name: mockFound.name,
-              email: mockFound.email,
-              image: mockFound.image || null,
+              id: localFound.id,
+              name: localFound.name,
+              email: localFound.email,
+              image: localFound.image || null,
             };
           }
         }
 
-        // 3. Check PostgreSQL database if external DB is configured
+        // 2. Check PostgreSQL database if external DB is configured
         if (hasExternalDb) {
           try {
             const user = await prisma.user.findUnique({
               where: { email },
             });
 
-            if (!user || !user.password) {
-              return null;
+            if (user && user.password) {
+              const isPasswordMatch = await bcrypt.compare(password, user.password);
+              if (isPasswordMatch) {
+                return {
+                  id: user.id,
+                  name: user.name,
+                  email: user.email,
+                  image: user.image,
+                };
+              }
             }
-
-            const isPasswordMatch = await bcrypt.compare(
-              password,
-              user.password
-            );
-
-            if (!isPasswordMatch) {
-              return null;
-            }
-
-            return {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              image: user.image,
-            };
           } catch (error) {
             console.warn("External DB query error in authorize:", error);
-            return null;
           }
         }
 
-        // Fallback for testing: allow any valid login if user was entered
-        return {
-          id: `user-${Date.now()}`,
-          name: email.split("@")[0],
+        // 3. Fallback: create persistent local record so user session never loses identity
+        const cleanName = email.split("@")[0];
+        const newUserId = `user-${Date.now()}`;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = {
+          id: newUserId,
+          name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
           email,
+          passwordHash: hashedPassword,
+          createdAt: new Date().toISOString(),
+        };
+        saveUser(newUser);
+
+        return {
+          id: newUserId,
+          name: newUser.name,
+          email: newUser.email,
           image: null,
         };
       },

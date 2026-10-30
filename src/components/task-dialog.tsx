@@ -40,7 +40,7 @@ interface TaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   taskToEdit?: TaskItem | null;
-  onSuccess?: () => void;
+  onSuccess?: (task?: any) => void;
 }
 
 export function TaskDialog({
@@ -56,7 +56,6 @@ export function TaskDialog({
   const defaultDeadline = React.useMemo(() => {
     const d = new Date();
     d.setHours(d.getHours() + 4);
-    // Format to YYYY-MM-DDTHH:mm
     return d.toISOString().slice(0, 16);
   }, []);
 
@@ -81,7 +80,6 @@ export function TaskDialog({
   React.useEffect(() => {
     if (taskToEdit) {
       const dt = new Date(taskToEdit.deadline);
-      // adjust to local timezone string YYYY-MM-DDTHH:mm
       const localIso = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
         .toISOString()
         .slice(0, 16);
@@ -110,14 +108,17 @@ export function TaskDialog({
   const onSubmit = async (data: FormValues) => {
     setLoading(true);
     try {
+      let resultTask: any = null;
       if (taskToEdit) {
-        await updateTask(taskToEdit.id, data);
+        const res = await updateTask(taskToEdit.id, data);
+        if (res.success) resultTask = res.task;
       } else {
-        await createTask(data);
+        const res = await createTask(data);
+        if (res.success) resultTask = res.task;
       }
       onOpenChange(false);
       reset();
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(resultTask);
     } catch (err) {
       console.error(err);
     } finally {
@@ -127,22 +128,23 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[95vw] sm:max-w-md p-4 sm:p-6 rounded-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="text-base sm:text-lg">
             {taskToEdit ? t("editTaskTitle") : t("createTaskTitle")}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5 pt-2">
           {/* Title */}
-          <div className="space-y-1.5">
-            <Label htmlFor="title">{t("titleLabel")}</Label>
+          <div className="space-y-1">
+            <Label htmlFor="title" className="text-xs sm:text-sm">{t("titleLabel")}</Label>
             <Input
               id="title"
               placeholder={t("titlePlaceholder")}
               {...register("title")}
               autoFocus
+              className="text-sm h-10"
             />
             {errors.title && (
               <p className="text-xs text-destructive">{errors.title.message}</p>
@@ -150,23 +152,25 @@ export function TaskDialog({
           </div>
 
           {/* Description */}
-          <div className="space-y-1.5">
-            <Label htmlFor="description">{t("descLabel")}</Label>
+          <div className="space-y-1">
+            <Label htmlFor="description" className="text-xs sm:text-sm">{t("descLabel")}</Label>
             <Textarea
               id="description"
               placeholder={t("descPlaceholder")}
               rows={3}
               {...register("description")}
+              className="text-sm"
             />
           </div>
 
           {/* Deadline */}
-          <div className="space-y-1.5">
-            <Label htmlFor="deadline">{t("deadlineLabel")}</Label>
+          <div className="space-y-1">
+            <Label htmlFor="deadline" className="text-xs sm:text-sm">{t("deadlineLabel")}</Label>
             <Input
               id="deadline"
               type="datetime-local"
               {...register("deadline")}
+              className="text-sm h-10"
             />
             {errors.deadline && (
               <p className="text-xs text-destructive">
@@ -176,14 +180,14 @@ export function TaskDialog({
           </div>
 
           {/* Priority & Status */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>{t("priorityLabel")}</Label>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <Label className="text-xs sm:text-sm">{t("priorityLabel")}</Label>
               <Select
                 value={priorityValue}
                 onValueChange={(val: any) => setValue("priority", val)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-10 text-xs sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -194,13 +198,13 @@ export function TaskDialog({
               </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <Label>{t("statusLabel")}</Label>
+            <div className="space-y-1">
+              <Label className="text-xs sm:text-sm">{t("statusLabel")}</Label>
               <Select
                 value={statusValue}
                 onValueChange={(val: any) => setValue("status", val)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-10 text-xs sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -212,16 +216,17 @@ export function TaskDialog({
             </div>
           </div>
 
-          <DialogFooter className="pt-4">
+          <DialogFooter className="pt-3 gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={loading}
+              className="text-xs sm:text-sm h-9"
             >
               {tCommon("cancel")}
             </Button>
-            <Button type="submit" disabled={loading} className="font-semibold">
+            <Button type="submit" disabled={loading} className="font-semibold text-xs sm:text-sm h-9">
               {loading
                 ? tCommon("loading")
                 : taskToEdit

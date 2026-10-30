@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "@/app/globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -6,6 +6,12 @@ import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
 
 export const metadata: Metadata = {
   title: "FocusFlow - Smart To-Do & Productivity Web App",
@@ -20,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="uz" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={`${inter.className} min-h-screen antialiased overflow-x-hidden`}>
         <SessionProvider>
           <ThemeProvider
             attribute="class"

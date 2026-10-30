@@ -5,7 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { Priority, TaskStatus } from "@prisma/client";
 import { z } from "zod";
-import { mockTasks } from "@/lib/demo-store";
+import {
+  getUserTasks,
+  saveTask,
+  updateStoredTask,
+  removeStoredTask,
+  findUserByEmail,
+} from "@/lib/demo-store";
 
 const taskSchema = z.object({
   title: z.string().min(1, "Title is required").max(200),
@@ -23,16 +29,21 @@ async function getAuthUserId() {
 
   if (session.user.id) return session.user.id;
 
-  if (session.user.email) {
+  const sessionEmail = session.user.email?.toLowerCase().trim();
+  if (sessionEmail) {
+    const localUser = findUserByEmail(sessionEmail);
+    if (localUser) return localUser.id;
+
     try {
       const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
+        where: { email: sessionEmail },
         select: { id: true },
       });
-      return user?.id || session.user.email;
+      if (user?.id) return user.id;
     } catch {
-      return session.user.email;
+      // ignore
     }
+    return sessionEmail;
   }
 
   return null;
@@ -46,7 +57,7 @@ export async function getTasks(filters?: {
   const userId = await getAuthUserId();
   if (!userId) return [];
 
-  // Try Prisma first if DB is configured
+  // Try Prisma first if external DB is active
   try {
     const where: any = { userId };
     if (filters?.status && filters.status !== "ALL") {
@@ -69,15 +80,15 @@ export async function getTasks(filters?: {
         { createdAt: "desc" },
       ],
     });
-    if (dbTasks) {
+    if (dbTasks && dbTasks.length > 0) {
       return dbTasks;
     }
   } catch (error) {
-    // Database offline, use mock store
+    // DB offline, fall through to persistent store
   }
 
-  // Get ONLY this specific user's tasks from store (no fake tasks!)
-  let list = mockTasks.filter((t) => t.userId === userId);
+  // Persistent store
+  let list = getUserTasks(userId);
 
   if (filters?.status && filters.status !== "ALL") {
     list = list.filter((t) => t.status === filters.status);
@@ -119,8 +130,7 @@ export async function getDashboardData() {
   }
 
   if (tasks.length === 0) {
-    // Real user tasks from memory store (only for this user)
-    tasks = mockTasks.filter((t) => t.userId === userId);
+    tasks = getUserTasks(userId);
   }
 
   const total = tasks.length;
@@ -150,10 +160,28 @@ export async function createTask(input: TaskInput) {
   try {
     const validated = taskSchema.parse(input);
     const deadlineDate = new Date(validated.deadline);
+    const deadlineIso = deadlineDate.toISOString();
 
+    // 1. Always save to persistent local store immediately for instant updates
+    const newTask = {
+      id: `task-${Date.now()}`,
+      userId,
+      title: validated.title,
+      description: validated.description || null,
+      deadline: deadlineIso,
+      priority: validated.priority as any,
+      status: validated.status as any,
+      completedAt: validated.status === "COMPLETED" ? new Date().toISOString() : null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    saveTask(newTask);
+
+    // 2. Also save to Prisma if DB is available
     try {
-      const task = await prisma.task.create({
+      await prisma.task.create({
         data: {
+          id: newTask.id,
           userId,
           title: validated.title,
           description: validated.description || null,
@@ -162,30 +190,13 @@ export async function createTask(input: TaskInput) {
           status: validated.status as TaskStatus,
         },
       });
-
-      revalidatePath("/[locale]/dashboard", "page");
-      revalidatePath("/[locale]/tasks", "page");
-      return { success: true, task };
-    } catch (dbError) {
-      // Mock store fallback
-      const newTask = {
-        id: `task-${Date.now()}`,
-        userId,
-        title: validated.title,
-        description: validated.description || null,
-        deadline: deadlineDate,
-        priority: validated.priority as any,
-        status: validated.status as any,
-        completedAt: validated.status === "COMPLETED" ? new Date() : null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      mockTasks.unshift(newTask);
-
-      revalidatePath("/[locale]/dashboard", "page");
-      revalidatePath("/[locale]/tasks", "page");
-      return { success: true, task: newTask };
+    } catch {
+      // Persistent file already saved
     }
+
+    revalidatePath("/[locale]/dashboard", "page");
+    revalidatePath("/[locale]/tasks", "page");
+    return { success: true, task: newTask };
   } catch (error: any) {
     return { success: false, error: error?.message || "Failed to create task" };
   }
@@ -195,103 +206,82 @@ export async function updateTask(id: string, input: Partial<TaskInput>) {
   const userId = await getAuthUserId();
   if (!userId) return { success: false, error: "Unauthorized" };
 
-  // Try Prisma
+  const updates: any = {};
+  if (input.title !== undefined) updates.title = input.title;
+  if (input.description !== undefined) updates.description = input.description;
+  if (input.deadline !== undefined) updates.deadline = new Date(input.deadline).toISOString();
+  if (input.priority !== undefined) updates.priority = input.priority;
+  if (input.status !== undefined) {
+    updates.status = input.status;
+    updates.completedAt = input.status === "COMPLETED" ? new Date().toISOString() : null;
+  }
+
+  const updatedLocal = updateStoredTask(id, updates);
+
+  // Also update DB
   try {
-    const existing = await prisma.task.findUnique({ where: { id } });
-    if (existing) {
-      const data: any = {};
-      if (input.title !== undefined) data.title = input.title;
-      if (input.description !== undefined) data.description = input.description;
-      if (input.deadline !== undefined) data.deadline = new Date(input.deadline);
-      if (input.priority !== undefined) data.priority = input.priority as Priority;
-      if (input.status !== undefined) {
-        data.status = input.status as TaskStatus;
-        data.completedAt = input.status === TaskStatus.COMPLETED ? new Date() : null;
-      }
-      const updated = await prisma.task.update({ where: { id }, data });
-      revalidatePath("/[locale]/dashboard", "page");
-      revalidatePath("/[locale]/tasks", "page");
-      return { success: true, task: updated };
-    }
+    const dbData: any = { ...updates };
+    if (updates.deadline) dbData.deadline = new Date(updates.deadline);
+    if (updates.completedAt) dbData.completedAt = new Date(updates.completedAt);
+    await prisma.task.update({ where: { id }, data: dbData });
   } catch {
-    // Database offline, check mock store
+    // ignore
   }
 
-  // Update in mock store
-  const index = mockTasks.findIndex((t) => t.id === id);
-  if (index !== -1) {
-    mockTasks[index] = {
-      ...mockTasks[index],
-      ...input,
-      deadline: input.deadline ? new Date(input.deadline) : mockTasks[index].deadline,
-      completedAt: input.status === "COMPLETED" ? new Date() : input.status ? null : mockTasks[index].completedAt,
-    };
-    revalidatePath("/[locale]/dashboard", "page");
-    revalidatePath("/[locale]/tasks", "page");
-    return { success: true, task: mockTasks[index] };
-  }
-
-  return { success: false, error: "Task not found" };
+  revalidatePath("/[locale]/dashboard", "page");
+  revalidatePath("/[locale]/tasks", "page");
+  return { success: true, task: updatedLocal };
 }
 
 export async function toggleTaskStatus(id: string, explicitStatus?: TaskStatus) {
   const userId = await getAuthUserId();
   if (!userId) return { success: false, error: "Unauthorized" };
 
+  const currentTasks = getUserTasks(userId);
+  const task = currentTasks.find((t) => t.id === id);
+
+  let nextStatus: TaskStatus = TaskStatus.COMPLETED;
+  if (explicitStatus) {
+    nextStatus = explicitStatus;
+  } else if (task) {
+    nextStatus = task.status === "COMPLETED" ? TaskStatus.PENDING : TaskStatus.COMPLETED;
+  }
+
+  const completedAt = nextStatus === TaskStatus.COMPLETED ? new Date().toISOString() : null;
+
+  updateStoredTask(id, {
+    status: nextStatus as any,
+    completedAt,
+  });
+
   try {
-    const existing = await prisma.task.findUnique({ where: { id } });
-    if (existing) {
-      const nextStatus =
-        explicitStatus ||
-        (existing.status === TaskStatus.COMPLETED ? TaskStatus.PENDING : TaskStatus.COMPLETED);
-
-      const updated = await prisma.task.update({
-        where: { id },
-        data: {
-          status: nextStatus,
-          completedAt: nextStatus === TaskStatus.COMPLETED ? new Date() : null,
-        },
-      });
-
-      revalidatePath("/[locale]/dashboard", "page");
-      revalidatePath("/[locale]/tasks", "page");
-      return { success: true, task: updated, isCompleted: nextStatus === TaskStatus.COMPLETED };
-    }
+    await prisma.task.update({
+      where: { id },
+      data: {
+        status: nextStatus,
+        completedAt: nextStatus === TaskStatus.COMPLETED ? new Date() : null,
+      },
+    });
   } catch {
-    // Check mock store
+    // ignore
   }
 
-  const task = mockTasks.find((t) => t.id === id);
-  if (task) {
-    const nextStatus =
-      explicitStatus ||
-      (task.status === "COMPLETED" ? "PENDING" : "COMPLETED");
-    task.status = nextStatus as any;
-    task.completedAt = nextStatus === "COMPLETED" ? new Date() : null;
-    revalidatePath("/[locale]/dashboard", "page");
-    revalidatePath("/[locale]/tasks", "page");
-    return { success: true, task, isCompleted: nextStatus === "COMPLETED" };
-  }
-
-  return { success: false, error: "Task not found" };
+  revalidatePath("/[locale]/dashboard", "page");
+  revalidatePath("/[locale]/tasks", "page");
+  return { success: true, isCompleted: nextStatus === TaskStatus.COMPLETED };
 }
 
 export async function deleteTask(id: string) {
   const userId = await getAuthUserId();
   if (!userId) return { success: false, error: "Unauthorized" };
 
+  removeStoredTask(id);
+
   try {
     await prisma.task.delete({ where: { id } });
-    revalidatePath("/[locale]/dashboard", "page");
-    revalidatePath("/[locale]/tasks", "page");
-    return { success: true };
   } catch {
-    // Check mock store
+    // ignore
   }
-
-  const filtered = mockTasks.filter((t) => t.id !== id);
-  mockTasks.length = 0;
-  mockTasks.push(...filtered);
 
   revalidatePath("/[locale]/dashboard", "page");
   revalidatePath("/[locale]/tasks", "page");
