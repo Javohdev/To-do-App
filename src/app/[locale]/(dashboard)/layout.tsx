@@ -22,14 +22,17 @@ export default async function DashboardLayout({
   }
 
   const dbUser = await getCurrentUser();
-  const userId = dbUser?.id || session.user.id || session.user.email || "user";
+  const cleanEmail = session.user.email?.toLowerCase().trim() || "user@app.com";
+  // Permanent, unchangeable identifier: clean email as account identifier
+  const userAccountKey = cleanEmail;
+
   const user = {
-    name: dbUser?.name || session.user.name || "Foydalanuvchi",
-    email: dbUser?.email || session.user.email || "",
+    name: dbUser?.name || session.user.name || cleanEmail.split("@")[0],
+    email: cleanEmail,
     image: dbUser?.image || session.user.image || null,
   };
 
-  // Fetch initial tasks (if database is connected)
+  // Fetch initial tasks from cloud DB / server
   const initialTasks = await getTasks();
   const serializedTasks = initialTasks.map((t: any) => ({
     id: t.id,
@@ -39,13 +42,13 @@ export default async function DashboardLayout({
     priority: t.priority,
     deadline: typeof t.deadline === "string" ? t.deadline : t.deadline.toISOString(),
     completedAt: t.completedAt ? (typeof t.completedAt === "string" ? t.completedAt : t.completedAt.toISOString()) : null,
-    userId,
+    userId: userAccountKey,
     createdAt: typeof t.createdAt === "string" ? t.createdAt : t.createdAt?.toISOString?.() || new Date().toISOString(),
     updatedAt: typeof t.updatedAt === "string" ? t.updatedAt : t.updatedAt?.toISOString?.() || new Date().toISOString(),
   }));
 
   return (
-    <TaskProvider userId={userId} initialTasks={serializedTasks}>
+    <TaskProvider userId={userAccountKey} initialTasks={serializedTasks}>
       <div className="flex min-h-screen bg-muted/20 w-full overflow-x-hidden">
         <Sidebar user={user} />
         <main className="flex-1 min-w-0 pt-16 lg:pt-0 p-3 sm:p-5 lg:p-8 max-w-7xl mx-auto w-full overflow-x-hidden">

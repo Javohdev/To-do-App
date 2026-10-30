@@ -37,6 +37,10 @@ export async function registerUser(input: RegisterInput) {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // Stable deterministic ID based on email
+    const cleanPrefix = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
+    const stableUserId = `usr_${cleanPrefix}_${Buffer.from(cleanEmail).toString("hex").slice(0, 10)}`;
+
     // If external cloud DB is configured (Render, Supabase, Neon):
     const hasExternalDb =
       process.env.DATABASE_URL &&
@@ -57,6 +61,7 @@ export async function registerUser(input: RegisterInput) {
 
         const user = await prisma.user.create({
           data: {
+            id: stableUserId,
             name,
             email: cleanEmail,
             password: hashedPassword,
@@ -69,7 +74,6 @@ export async function registerUser(input: RegisterInput) {
           },
         });
 
-        // Also save locally for persistent backup
         saveUser({
           id: user.id,
           name,
@@ -87,10 +91,9 @@ export async function registerUser(input: RegisterInput) {
       }
     }
 
-    // Persistent storage (persists across restarts and logins!)
-    const newUserId = `user-${Date.now()}`;
+    // Persistent storage with stable ID
     const newUser = {
-      id: newUserId,
+      id: stableUserId,
       name,
       email: cleanEmail,
       passwordHash: hashedPassword,
@@ -100,7 +103,7 @@ export async function registerUser(input: RegisterInput) {
 
     return {
       success: true,
-      userId: newUserId,
+      userId: stableUserId,
     };
   } catch (error: any) {
     console.error("Error registering user:", error);

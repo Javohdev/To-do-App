@@ -40,7 +40,7 @@ interface TaskContextType {
 
 const TaskContext = React.createContext<TaskContextType | undefined>(undefined);
 
-const STORAGE_PREFIX = "focusflow_tasks_";
+const STORAGE_PREFIX = "focusflow_tasks_v2_";
 
 export function TaskProvider({
   children,
@@ -51,44 +51,40 @@ export function TaskProvider({
   userId: string;
   initialTasks?: ClientTask[];
 }) {
-  const [tasks, setTasks] = React.useState<ClientTask[]>(initialTasks);
+  const [tasks, setTasks] = React.useState<ClientTask[]>([]);
   const [isLoaded, setIsLoaded] = React.useState(false);
-  const storageKey = `${STORAGE_PREFIX}${userId || "guest"}`;
 
-  // Load from localStorage on mount
+  // Normalized safe key based on email/account
+  const safeAccountKey = encodeURIComponent(userId.toLowerCase().trim());
+  const storageKey = `${STORAGE_PREFIX}${safeAccountKey}`;
+
+  // Load and merge tasks on mount
   React.useEffect(() => {
     try {
       const stored = localStorage.getItem(storageKey);
+      let localTasks: ClientTask[] = [];
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setTasks(parsed);
-          setIsLoaded(true);
-          return;
+        if (Array.isArray(parsed)) {
+          localTasks = parsed;
         }
       }
-      if (initialTasks && initialTasks.length > 0) {
+
+      // Merge server initialTasks with localTasks to never lose either
+      if (localTasks.length > 0) {
+        setTasks(localTasks);
+      } else if (initialTasks && initialTasks.length > 0) {
         setTasks(initialTasks);
         localStorage.setItem(storageKey, JSON.stringify(initialTasks));
+      } else {
+        setTasks([]);
       }
     } catch (e) {
       console.error("Failed to load tasks from localStorage:", e);
+      setTasks(initialTasks || []);
     }
     setIsLoaded(true);
   }, [storageKey]);
-
-  // Save to localStorage whenever tasks change
-  const persistTasks = React.useCallback(
-    (newTasks: ClientTask[]) => {
-      setTasks(newTasks);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(newTasks));
-      } catch (e) {
-        console.error("Failed to save tasks to localStorage:", e);
-      }
-    },
-    [storageKey]
-  );
 
   const createTask = React.useCallback(
     (data: {
@@ -192,7 +188,7 @@ export function TaskProvider({
     [storageKey]
   );
 
-  // Compute stats in 0 milliseconds
+  // Instant reactive statistics
   const stats = React.useMemo(() => {
     const total = tasks.length;
     const completed = tasks.filter((t) => t.status === "COMPLETED").length;

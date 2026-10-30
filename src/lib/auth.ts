@@ -40,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = String(credentials.email).toLowerCase().trim();
         const password = String(credentials.password);
 
-        // 1. Check local persistent store first (ultra-fast, works on mobile & restarts)
+        // 1. Check local persistent store first
         const localFound = findUserByEmail(email);
         if (localFound) {
           if (!localFound.passwordHash) {
@@ -73,6 +73,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (user && user.password) {
               const isPasswordMatch = await bcrypt.compare(password, user.password);
               if (isPasswordMatch) {
+                // Ensure local persistent copy has stable id
+                if (!localFound) {
+                  saveUser({
+                    id: user.id,
+                    name: user.name || email.split("@")[0],
+                    email: user.email,
+                    passwordHash: user.password,
+                    createdAt: user.createdAt.toISOString(),
+                  });
+                }
                 return {
                   id: user.id,
                   name: user.name,
@@ -86,12 +96,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
 
-        // 3. Fallback: create persistent local record so user session never loses identity
+        // 3. Fallback: Stable deterministic User ID derived from email
+        // NEVER use Date.now() here, because logging in again will generate a new ID!
         const cleanName = email.split("@")[0];
-        const newUserId = `user-${Date.now()}`;
+        const stableUserId = `usr_${cleanName.replace(/[^a-zA-Z0-9]/g, "")}_${Buffer.from(email).toString("hex").slice(0, 10)}`;
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = {
-          id: newUserId,
+          id: stableUserId,
           name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
           email,
           passwordHash: hashedPassword,
@@ -100,7 +111,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         saveUser(newUser);
 
         return {
-          id: newUserId,
+          id: stableUserId,
           name: newUser.name,
           email: newUser.email,
           image: null,
